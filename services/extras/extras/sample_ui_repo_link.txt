@@ -1,0 +1,2 @@
+# Replace this with the git URL of your chat UI repo.
+https://github.com/droolingwithsanity/Assistant.git
