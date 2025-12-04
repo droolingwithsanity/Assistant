@@ -1,4 +1,4 @@
-name: Deploy AI Workers
+- name: Deploy AI Workers
 hosts: workers
 become: yes
 vars:
