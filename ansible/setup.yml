@@ -1,0 +1,45 @@
+- name: Base setup for all AI nodes
+hosts: ai_cluster
+become: yes
+vars:
+apt_packages:
+- git
+- curl
+- wget
+- build-essential
+- python3
+- python3-pip
+- python3-venv
+- ffmpeg
+- sox
+- alsa-utils
+tasks:
+- name: Update apt cache
+apt:
+update_cache: yes
+cache_valid_time: 3600
+
+
+- name: Upgrade all packages
+apt:
+upgrade: dist
+
+
+- name: Install packages
+apt:
+name: "{{ apt_packages }}"
+state: present
+
+
+- name: Ensure ssh service running
+service:
+name: ssh
+state: started
+enabled: yes
+
+
+- name: Ensure /opt exists
+file:
+path: /opt
+state: directory
+mode: '0755'
