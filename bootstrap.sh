@@ -1,71 +1,76 @@
 #!/usr/bin/env bash
-{% for w in workers %}
-{{ w.hostname }} ansible_host={{ w.ip }} ansible_user={{ w.user }}
-{% endfor %}
+set -euo pipefail
 
 
-[ai_cluster:children]
-master
-workers
-EOF
-fi
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ANSIBLE_DIR="$REPO_ROOT/ansible"
+KEY_PATH="$HOME/.ssh/id_ed25519_ai_cluster"
 
 
-# render the template (simple rendering without jinja: do replacements)
-master_host_entry=""
-workers_entries=""
+function banner() {
+echo
+echo "=============================================="
+echo " ODROID-XU4 AI CLUSTER BOOTSTRAP"
+echo "=============================================="
+}
 
 
-# build values from nodes array
-for entry in "${nodes[@]}"; do
-IFS=';' read -r host ip user pass <<<"$entry"
-if [[ "$host" == "$MASTER_NAME" ]]; then
-master_host_entry="$host ansible_host=$ip ansible_user=$user ansible_connection=local"
-else
-workers_entries+="$host ansible_host=$ip ansible_user=$user\n"
-fi
+banner
+
+
+read -rp "Which device hostname will be the MASTER (local host, e.g. ai-master)? " MASTER_NAME
+
+
+# gather three nodes info
+nodes=()
+for i in 1 2 3; do
+echo
+read -rp "Enter node #$i hostname (e.g. ai-master / ai-worker-1): " host
+read -rp "Enter node #$i IP address: " ip
+read -rp "Enter SSH username for $host: " user
+# read password silently
+read -rs -p "Enter SSH password for $user@$ip (will not be stored): " pass
+echo
+nodes+=("$host;$ip;$user;$pass")
 done
 
 
-cat > "$OUT" <<EOF
-[master]
-$master_host_entry
-
-
-[workers]
-$workers_entries
-
-
-[ai_cluster:children]
-master
-workers
-EOF
-
-
-echo "Generated Ansible inventory at $OUT"
-
-
-# install ansible if missing
-if ! command -v ansible >/dev/null 2>&1; then
-echo "Installing Ansible on local host (requires sudo)..."
-sudo apt update && sudo apt install -y ansible
+# generate key if not exists
+if [[ ! -f "$KEY_PATH" ]]; then
+echo "Generating ed25519 key at $KEY_PATH"
+ssh-keygen -t ed25519 -f "$KEY_PATH" -N "" -C "ai-cluster"
+else
+echo "Using existing key at $KEY_PATH"
 fi
 
 
-# run base playbook
-echo "Running base setup playbook: ansible/setup.yml"
-ansible-playbook -i "$OUT" "$ANSIBLE_DIR/setup.yml" --ask-become-pass || true
+# Install sshpass if missing (Debian/Ubuntu)
+if ! command -v sshpass >/dev/null 2>&1; then
+echo "sshpass not found. Installing via apt (requires sudo)."
+sudo apt update && sudo apt install -y sshpass
+fi
 
 
-# done message
-cat <<MSG
+# copy key to nodes (skip master local install)
+for entry in "${nodes[@]}"; do
+IFS=';' read -r host ip user pass <<<"$entry"
+if [[ "$host" == "$MASTER_NAME" ]]; then
+echo "Skipping key copy for master ($host) — key is already local."
+continue
+fi
+echo "Copying SSH key to $user@$ip ($host)"
+# create .ssh and append public key using sshpass
+PUBKEY_CONTENT=$(cat "$KEY_PATH.pub")
+# use a short script to create authorized_keys remotely
+sshpass -p "$pass" ssh -o StrictHostKeyChecking=no "$user@$ip" "mkdir -p ~/.ssh && chmod 700 ~/.ssh && echo '$PUBKEY_CONTENT' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
+echo "Key copied to $host"
+done
 
 
-Bootstrap complete (best effort). Next steps:
-- Review $ANSIBLE_DIR/hosts.ini and adjust if needed
-- Run: ansible-playbook -i $ANSIBLE_DIR/hosts.ini $ANSIBLE_DIR/deploy-master.yml
-- Run: ansible-playbook -i $ANSIBLE_DIR/hosts.ini $ANSIBLE_DIR/deploy-workers.yml
+# create ansible hosts file from template
+mkdir -p "$ANSIBLE_DIR"
+TEMPLATE="$ANSIBLE_DIR/hosts.ini.j2"
+OUT="$ANSIBLE_DIR/hosts.ini"
 
 
-If anything failed, re-run the script or run individual ansible-playbook commands.
 MSG
