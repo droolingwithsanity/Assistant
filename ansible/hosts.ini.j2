@@ -1,0 +1,11 @@
+[master]
+{{ master_hostname }} ansible_host={{ master_ip }} ansible_user={{ master_user }} ansible_connection=local
+
+
+[workers]
+# worker entries inserted by bootstrap script
+
+
+[ai_cluster:children]
+master
+workers
