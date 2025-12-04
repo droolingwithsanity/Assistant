@@ -1,0 +1,64 @@
+- name: Deploy UI + API Gateway on master
+hosts: master
+become: yes
+tasks:
+- name: Install Node.js and npm (from apt)
+apt:
+name:
+- nodejs
+- npm
+state: present
+
+
+- name: Clone UI repo placeholder (replace URL)
+git:
+repo: https://github.com/YOUR_UI_REPO.git
+dest: /opt/ai-ui
+update: yes
+ignore_errors: yes
+
+
+- name: Create a virtualenv for python services
+command: python3 -m venv /opt/ai-master-venv creates=/opt/ai-master-venv/bin/activate
+
+
+- name: Ensure a systemd service script exists (sample)
+copy:
+dest: /opt/ai-master-start.sh
+mode: '0755'
+content: |
+#!/usr/bin/env bash
+source /opt/ai-master-venv/bin/activate
+cd /opt/ai-ui || exit 1
+# example start, replace with your UI server command
+npm install --no-audit --no-fund
+npm run start
+
+
+- name: Create systemd service file for master API (sample)
+copy:
+dest: /etc/systemd/system/ai-master.service
+mode: '0644'
+content: |
+[Unit]
+Description=AI Master API
+After=network.target
+
+
+[Service]
+Type=simple
+User=root
+ExecStart=/opt/ai-master-start.sh
+Restart=on-failure
+
+
+[Install]
+WantedBy=multi-user.target
+
+
+- name: Reload systemd and enable service
+systemd:
+daemon_reload: yes
+name: ai-master.service
+state: started
+enabled: yes
