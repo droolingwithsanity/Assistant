@@ -1,0 +1,58 @@
+- name: Deploy AI Workers
+hosts: workers
+become: yes
+vars:
+venv_path: /opt/ai-venv
+tasks:
+- name: Create virtualenv
+command: python3 -m venv {{ venv_path }} creates={{ venv_path }}/bin/activate
+
+
+- name: Ensure pip is upgraded
+command: {{ venv_path }}/bin/python -m pip install --upgrade pip
+
+
+- name: Install typical AI packages into venv
+pip:
+virtualenv: "{{ venv_path }}"
+name:
+- flask
+- uvicorn
+- faster-whisper
+- openai
+state: present
+
+
+- name: Create worker start script (sample)
+copy:
+dest: /opt/ai-worker-start.sh
+mode: '0755'
+content: |
+#!/usr/bin/env bash
+source {{ venv_path }}/bin/activate
+# replace the following with your worker command
+exec python3 -m flask run --host=0.0.0.0 --port=8000
+
+
+- name: Create systemd service for worker
+copy:
+dest: /etc/systemd/system/ai-worker.service
+mode: '0644'
+content: |
+[Unit]
+Description=AI Worker Service
+After=network.target
+
+
+[Service]
+Type=simple
+User=root
+ExecStart=/opt/ai-worker-start.sh
+Restart=on-failure
+
+
+[Install]
+WantedBy=multi-user.target
+
+
+- name: Reload systemd and enable worker
